@@ -24,6 +24,16 @@ class AttributeEwmaPolicy:
     - risk_margin: safety cushion (0.10–0.25). Higher reduces risk but may raise rejections.
     - warmup_observations: observations before relaxing (80–200). Larger is safer.
     - prior_freqs: optional priors from API to initialize p_hat for faster convergence.
+
+    Math notes (non-helpful candidate x)
+    - For each underfilled attribute a with shortfall need[a] > 0:
+      let current count c[a], minimum m[a], and estimated rate p_hat[a].
+      After deciding on x, remaining slots are R' = R - 1. We want in expectation:
+          c[a] + p_hat[a] * R' >= m[a] * (1 + margin_eff)
+      where margin_eff ∈ [0, risk_margin] scales with tightness S/R' (S = total shortfall).
+      Rearranged acceptance test per a:
+          p_hat[a] >= (m[a] * (1 + margin_eff) - c[a]) / R'
+      We accept x only if this holds for all underfilled a. Helpful candidates are always accepted.
     """
 
     min_counts: Mapping[AttributeId, int]
@@ -102,7 +112,8 @@ class AttributeEwmaPolicy:
                 continue
             p = self.p_hat.get(a, 0.0)
             expected_help = p * float(R_prime)
-            # Require margin to reduce risk of falling short
+            # Require margin to reduce risk of falling short; equivalent to
+            #   p_hat[a] >= (target - c[a]) / R'
             target = self.min_counts[a] * (1.0 + margin_eff)
             if self.accepted_attribute_counts.get(a, 0) + expected_help < target:
                 return False

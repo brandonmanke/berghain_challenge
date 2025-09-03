@@ -12,14 +12,21 @@ class WindowRelaxedPolicy:
     """
     Sliding-window relaxed variant of QuotaReserve.
 
-    - p_hat is computed over a fixed-size window of arrivals.
-    - Non-helpful acceptance allowed when p_hat >= S/(R-1) with margin.
-    - Early window sizes or few observations fall back to conservative reserve.
+    Notation
+    - R = remaining capacity, R' = R - 1 after decision
+    - S = sum of per-attribute shortfalls (remaining_needed)
+    - p_hat = (# helpful in last W arrivals) / W
+
+    Gate for non-helpful candidate
+    - Safety: if S >= R, reject (no slack).
+    - Warmup: until min_observations, require S < (R - 1).
+    - Window gate: accept if p_hat >= S / R' * (1 + risk_margin),
+      which ensures E[helpful in remaining] ≈ p_hat * R' ≥ S in expectation.
 
     Tuning
-    - window_size: 300–800 reasonable; larger is smoother/laggier.
-    - risk_margin: 0.10–0.20 typical.
-    - min_observations: 80–150 before relaxing.
+    - window_size: 300–800 (larger = smoother, slower to adapt).
+    - risk_margin: 0.10–0.20.
+    - min_observations: 80–150.
     """
 
     min_counts: Mapping[AttributeId, int]

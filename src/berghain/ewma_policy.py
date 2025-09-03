@@ -11,9 +11,19 @@ class EwmaRelaxedPolicy:
     """
     EWMA-based relaxed reserve policy (single global p_hat).
 
-    - p_hat tracks fraction of recent arrivals that would be helpful.
-    - Non-helpful acceptance allowed when p_hat >= S/(R-1) with margin.
-    - Warmup uses conservative reserve logic to avoid early risk.
+    Notation
+    - capacity: total venue capacity (N), admitted_count: A, remaining capacity R = N - A
+    - remaining_needed: vector of per-attribute shortfalls; S = sum(remaining_needed)
+    - helpful arrival: contributes to at least one underfilled attribute
+
+    Logic (non-helpful candidate x)
+    - Safety gate: if S >= R, reject (no slack: even if every remaining arrival were helpful,
+      accepting x consumes a slot needed to meet minimums).
+    - Warmup: if observations < warmup_observations, require S < (R - 1) (keep one-slot slack).
+    - EWMA gate: with R' = R - 1 and EWMA helpful rate p_hat,
+      accept if p_hat >= S / R' * (1 + risk_margin).
+      Rationale: E[helpful in remaining] = p_hat * R' >= S ensures expected feasibility; margin
+      inflates the requirement to reduce variance risk.
 
     Tuning
     - alpha: 0.03–0.06 (higher adapts faster, can be noisier).
