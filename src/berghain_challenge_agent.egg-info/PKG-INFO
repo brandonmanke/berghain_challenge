@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: berghain-challenge-agent
+Version: 0.0.1
+Summary: Agent and CLI for the Berghain admission challenge
+Requires-Python: >=3.12
+Requires-Dist: requests>=2.31
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Requires-Dist: ruff>=0.3.0; extra == "dev"
+Requires-Dist: black>=23.0; extra == "dev"
+Requires-Dist: mypy>=1.5; extra == "dev"
+Requires-Dist: types-requests>=2.31.0.6; extra == "dev"
