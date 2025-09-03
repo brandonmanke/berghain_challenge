@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "berghain-challenge-agent"
+version = "0.0.1"
+description = "Agent and CLI for the Berghain admission challenge"
+requires-python = ">=3.12"
+dependencies = [
+  "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "pytest-cov>=4.0",
+  "ruff>=0.3.0",
+  "black>=23.0",
+  "mypy>=1.5",
+  "types-requests>=2.31.0.6",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+lint.select = ["E","F","I"]
+lint.ignore = []
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = false
+warn_redundant_casts = false
+warn_unused_configs = false
+disallow_untyped_defs = false
