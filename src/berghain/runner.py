@@ -78,9 +78,24 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     )
     p.add_argument(
         "--policy",
-        choices=["reserve", "window", "ewma"],
+        choices=["reserve", "window", "ewma", "attr-ewma"],
         default=os.getenv("POLICY", "reserve"),
         help="Policy type",
+    )
+    # Policy tuning knobs (optional)
+    p.add_argument("--alpha", type=float, default=None, help="Smoothing factor for EWMA policies")
+    p.add_argument(
+        "--risk-margin", type=float, default=None, help="Safety margin for relaxed policies"
+    )
+    p.add_argument(
+        "--warmup", type=int, default=None, help="Warmup observations before relaxing gates"
+    )
+    p.add_argument("--window-size", type=int, default=None, help="Window size for window policy")
+    p.add_argument(
+        "--min-observations",
+        type=int,
+        default=None,
+        help="Minimum observations before relaxing window policy",
     )
     # Resume options
     p.add_argument(
@@ -115,6 +130,11 @@ def run_game(
     log_json: Optional[str] = None,
     log_interval: int = 100,
     policy_name: str = "reserve",
+    alpha: Optional[float] = None,
+    risk_margin: Optional[float] = None,
+    warmup: Optional[int] = None,
+    window_size: Optional[int] = None,
+    min_observations: Optional[int] = None,
 ) -> Tuple[int, Dict[str, int]]:
     client = ApiClient(base_url, timeout=timeout, retries=retries)
     new_game = client.new_game(scenario, player_id)
@@ -125,11 +145,39 @@ def run_game(
     elif policy_name == "window":
         from .window_policy import WindowRelaxedPolicy  # type: ignore
 
-        policy = WindowRelaxedPolicy(min_counts=min_counts, capacity=capacity)
+        policy = WindowRelaxedPolicy(
+            min_counts=min_counts,
+            capacity=capacity,
+            window_size=window_size or 500,
+            risk_margin=risk_margin if risk_margin is not None else 0.15,
+            min_observations=min_observations or 100,
+        )
     elif policy_name == "ewma":
         from .ewma_policy import EwmaRelaxedPolicy  # type: ignore
 
-        policy = EwmaRelaxedPolicy(min_counts=min_counts, capacity=capacity)
+        policy = EwmaRelaxedPolicy(
+            min_counts=min_counts,
+            capacity=capacity,
+            alpha=alpha if alpha is not None else 0.03,
+            risk_margin=risk_margin if risk_margin is not None else 0.15,
+            warmup_observations=warmup or 100,
+        )
+    elif policy_name == "attr-ewma":
+        from .attr_ewma_policy import AttributeEwmaPolicy  # type: ignore
+
+        prior_freqs = (
+            new_game.attributeStatistics.relativeFrequencies
+            if hasattr(new_game, "attributeStatistics")
+            else {}
+        )
+        policy = AttributeEwmaPolicy(
+            min_counts=min_counts,
+            capacity=capacity,
+            alpha=alpha if alpha is not None else 0.04,
+            risk_margin=risk_margin if risk_margin is not None else 0.20,
+            warmup_observations=warmup or 200,
+            prior_freqs=prior_freqs,
+        )
     else:
         raise ValueError(f"Unknown policy: {policy_name}")
 
@@ -281,6 +329,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 resume_from_log=ns.resume_from_log,
                 override_game_id=ns.game_id,
                 override_start_index=ns.start_index,
+                alpha=ns.alpha,
+                risk_margin=ns.risk_margin,
+                warmup=ns.warmup,
+                window_size=ns.window_size,
+                min_observations=ns.min_observations,
             )
         else:
             rejected, remaining = run_game(
@@ -296,6 +349,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 log_json=ns.log_json,
                 log_interval=ns.log_interval,
                 policy_name=ns.policy,
+                alpha=ns.alpha,
+                risk_margin=ns.risk_margin,
+                warmup=ns.warmup,
+                window_size=ns.window_size,
+                min_observations=ns.min_observations,
             )
     except Exception as e:
         print(str(e))
@@ -388,6 +446,11 @@ def resume_game(
     resume_from_log: Optional[str],
     override_game_id: Optional[str],
     override_start_index: Optional[int],
+    alpha: Optional[float],
+    risk_margin: Optional[float],
+    warmup: Optional[int],
+    window_size: Optional[int],
+    min_observations: Optional[int],
 ) -> Tuple[int, Dict[str, int]]:
     if not resume_from_log and (not override_game_id or override_start_index is None):
         raise RuntimeError("Provide --resume-from-log or both --game-id and --start-index")
@@ -421,11 +484,34 @@ def resume_game(
     elif policy_name == "window":
         from .window_policy import WindowRelaxedPolicy  # type: ignore
 
-        policy = WindowRelaxedPolicy(min_counts=constraints, capacity=capacity)
+        policy = WindowRelaxedPolicy(
+            min_counts=constraints,
+            capacity=capacity,
+            window_size=window_size or 500,
+            risk_margin=risk_margin if risk_margin is not None else 0.15,
+            min_observations=min_observations or 100,
+        )
     elif policy_name == "ewma":
         from .ewma_policy import EwmaRelaxedPolicy  # type: ignore
 
-        policy = EwmaRelaxedPolicy(min_counts=constraints, capacity=capacity)
+        policy = EwmaRelaxedPolicy(
+            min_counts=constraints,
+            capacity=capacity,
+            alpha=alpha if alpha is not None else 0.03,
+            risk_margin=risk_margin if risk_margin is not None else 0.15,
+            warmup_observations=warmup or 100,
+        )
+    elif policy_name == "attr-ewma":
+        from .attr_ewma_policy import AttributeEwmaPolicy  # type: ignore
+
+        # No priors available on resume; policy will keep EWMA primed via replay
+        policy = AttributeEwmaPolicy(
+            min_counts=constraints,
+            capacity=capacity,
+            alpha=alpha if alpha is not None else 0.04,
+            risk_margin=risk_margin if risk_margin is not None else 0.20,
+            warmup_observations=warmup or 200,
+        )
     else:
         raise ValueError(f"Unknown policy: {policy_name}")
 
