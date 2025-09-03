@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Mapping
-
+from typing import Dict, Mapping, Optional, Union
 
 AttributeId = str
 
@@ -54,5 +53,4 @@ class DecideAndNextFailed:
     nextPerson: None
 
 
-DecideAndNextResponse = DecideAndNextRunning | DecideAndNextCompleted | DecideAndNextFailed
-
+DecideAndNextResponse = Union[DecideAndNextRunning, DecideAndNextCompleted, DecideAndNextFailed]
