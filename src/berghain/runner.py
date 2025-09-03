@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from .client import ApiClient
@@ -114,6 +115,12 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     )
     p.add_argument("--verbose", action="store_true")
     return p.parse_args(argv)
+
+
+def _default_log_path(prefix: str, policy: str, scenario: int) -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    safe_policy = (policy or "policy").replace("/", "-")
+    return os.path.join("logs", f"{prefix}-{safe_policy}-s{scenario}-{ts}.ndjson")
 
 
 def run_game(
@@ -313,6 +320,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         if ns.resume_from_log or ns.game_id or ns.start_index is not None:
+            # Default resume log path if none provided
+            if not ns.log_json:
+                ns.log_json = _default_log_path("resume", ns.policy, ns.scenario)
             rejected, remaining = resume_game(
                 base_url=ns.base_url,
                 player_id=ns.player_id,
@@ -336,6 +346,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 min_observations=ns.min_observations,
             )
         else:
+            # Default run log path if none provided
+            if not ns.log_json:
+                ns.log_json = _default_log_path("run", ns.policy, ns.scenario)
             rejected, remaining = run_game(
                 base_url=ns.base_url,
                 player_id=ns.player_id,

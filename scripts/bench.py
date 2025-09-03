@@ -28,7 +28,7 @@ def parse_args(argv: List[str]):
     p.add_argument("--json-out", default=os.getenv("BENCH_JSON"), help="Write summary JSON to file")
     p.add_argument(
         "--policy",
-        choices=["reserve", "window", "ewma"],
+        choices=["reserve", "window", "ewma", "attr-ewma"],
         default=os.getenv("POLICY", "reserve"),
     )
     return p.parse_args(argv)
@@ -74,6 +74,13 @@ def main(argv: List[str] | None = None) -> int:
         except Exception as e:
             print(f"Scenario {s} failed: {e}")
             results[s] = {"error": str(e)}
+
+    # Default JSON output name if not provided
+    if not ns.json_out:
+        from datetime import datetime, timezone
+
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        ns.json_out = f"bench-{ns.policy}-{ts}.json"
 
     print("\nSummary:")
     for s in scenarios:

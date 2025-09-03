@@ -30,7 +30,8 @@ Opinionated Python 3.12 agent for the Berghain admission challenge. It talks to 
 
 ## Logging & Resume
 - Enable NDJSON logs for progress + recovery:
-  - `make run LOG_JSON=logs/run.ndjson LOG_INTERVAL=1 ARGS="--policy ewma --verbose"`
+  - If not specified, logs default to `logs/run-<policy>-s<scenario>-<timestamp>.ndjson`.
+  - Example: `make run LOG_INTERVAL=1 ARGS="--policy ewma --verbose"`
 - Auto‑resume from latest log (rebuilds policy state and resyncs indices):
   - `make resume-latest POLICY=ewma VERBOSE=1 JSON_LOG=logs/resume.ndjson LOG_INTERVAL=1`
 - Resume from a specific log:
@@ -40,7 +41,8 @@ Opinionated Python 3.12 agent for the Berghain admission challenge. It talks to 
 
 ## Benchmarks
 - Run multiple scenarios and summarize results:
-  - `make bench SCENARIOS=1,2,3 JSON_OUT=bench.json VERBOSE=1 ARGS="--policy ewma"`
+  - If not specified, summary defaults to `bench-<policy>-<timestamp>.json`.
+  - Example: `make bench SCENARIOS=1,2,3 VERBOSE=1 ARGS="--policy ewma"`
 
 ## Useful Flags (CLI)
 - Connectivity: `--timeout 60`, `--retries 5`

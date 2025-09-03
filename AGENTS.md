@@ -18,8 +18,9 @@
   - Run tests: `uv run pytest -q`
   - Lint/format: `uv run ruff check . && uv run black --check .` (auto-fix with `uv run black .`)
   - Type-check: `uv run mypy src`
-  - Run agent: `uv run python scripts/play.py --scenario 1 --capacity 1000`
-  - JSON logs (NDJSON): add `--log-json logs/run.ndjson --log-interval 100`
+- Run agent: `uv run python scripts/play.py --scenario 1 --capacity 1000`
+  - JSON logs (NDJSON): by default goes to `logs/run-<policy>-s<scenario>-<timestamp>.ndjson`.
+  - You can set a path explicitly via `--log-json`.
 - Fallback (pip):
   - `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
   - `PYTHONPATH=src python scripts/play.py --scenario 1 --capacity 1000`
