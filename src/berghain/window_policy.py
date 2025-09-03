@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass, field
+from typing import Deque, Dict, Mapping
+
+AttributeId = str
+
+
+@dataclass
+class WindowRelaxedPolicy:
+    """
+    Sliding-window relaxed variant of QuotaReserve.
+
+    For non-helpful candidates, accept if estimated helpful arrival rate
+    in the recent window is high enough to still meet remaining minimums.
+
+    Heuristic:
+      - Let R be remaining capacity, S be total remaining minimums.
+      - For a non-helpful candidate, require p_hat >= S / (R-1) * (1 + risk_margin),
+        where p_hat is fraction of recent arrivals that would be helpful
+        (i.e., possess any underfilled attribute at the time they appeared).
+      - Falls back to simple reserve rule early when limited observations.
+    """
+
+    min_counts: Mapping[AttributeId, int]
+    capacity: int
+    window_size: int = 500
+    risk_margin: float = 0.15
+    min_observations: int = 100
+
+    # Internal state
+    accepted_attribute_counts: Dict[AttributeId, int] = field(default_factory=dict)
+    window_helpful: Deque[bool] = field(default_factory=deque)
+
+    def _remaining_needed(self) -> Dict[AttributeId, int]:
+        rem: Dict[AttributeId, int] = {}
+        for a, m in self.min_counts.items():
+            c = self.accepted_attribute_counts.get(a, 0)
+            rem[a] = max(0, m - c)
+        return rem
+
+    def remaining_needed(self) -> Dict[AttributeId, int]:
+        return self._remaining_needed()
+
+    def update_on_accept(self, attributes: Mapping[AttributeId, bool]) -> None:
+        for a, v in attributes.items():
+            if v:
+                self.accepted_attribute_counts[a] = self.accepted_attribute_counts.get(a, 0) + 1
+
+    def _record_window(self, helpful: bool) -> None:
+        self.window_helpful.append(helpful)
+        while len(self.window_helpful) > self.window_size:
+            self.window_helpful.popleft()
+
+    def _p_hat(self) -> float:
+        if not self.window_helpful:
+            return 0.0
+        return sum(1 for x in self.window_helpful if x) / float(len(self.window_helpful))
+
+    def decide(self, admitted_count: int, attributes: Mapping[AttributeId, bool]) -> bool:
+        R = max(0, self.capacity - admitted_count)
+        remaining_needed = self._remaining_needed()
+        helpful = any(
+            attributes.get(a, False) and remaining_needed.get(a, 0) > 0 for a in self.min_counts
+        )
+
+        # Record helpfulness of the current candidate relative to current needs
+        self._record_window(helpful)
+
+        if helpful:
+            return True
+
+        S = sum(remaining_needed.values())
+        # Hard safety: if no slack, reject non-helpful
+        if S >= R:
+            return False
+
+        # Early-game fallback to conservative rule
+        if len(self.window_helpful) < self.min_observations:
+            # Require at least one slot of slack, like QuotaReserve
+            return S < (R - 1)
+
+        # Window-based relaxed decision
+        R_prime = max(1, R - 1)
+        p_hat = self._p_hat()
+        req_ratio = S / float(R_prime)
+        # Accept non-helpful if recent helpful rate looks sufficient
+        return p_hat >= req_ratio * (1.0 + self.risk_margin)
+
+    # Offline priming from logs
+    def record_observation(self, helpful: bool) -> None:
+        self._record_window(helpful)

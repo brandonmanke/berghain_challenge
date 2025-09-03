@@ -7,21 +7,31 @@ AttributeId = str
 
 
 @dataclass
-class QuotaReservePolicy:
+class EwmaRelaxedPolicy:
     """
-    Greedy policy that reserves enough capacity to always be able to
-    satisfy remaining per-attribute minimum counts in the worst case.
+    EWMA-based relaxed reserve policy.
 
-    - Always accept if the candidate contributes to any underfilled attribute.
-    - Otherwise accept only if there is slack: sum(remaining_needed) <= R - 1,
-      where R is remaining capacity.
+    Maintains an exponentially-weighted moving average p_hat of the rate at
+    which arrivals are "helpful" (i.e., satisfy any underfilled attribute).
+
+    Accept rule:
+      - Always accept helpful candidates.
+      - Otherwise reject if no slack (S >= R).
+      - Otherwise, once enough observations have accrued, accept non-helpful if
+        p_hat >= S/(R-1) * (1 + risk_margin).
+      - Early on (few obs), fall back to conservative reserve: require S < R-1.
     """
 
     min_counts: Mapping[AttributeId, int]
     capacity: int
+    alpha: float = 0.03  # smoothing factor in (0,1]
+    risk_margin: float = 0.15
+    warmup_observations: int = 100
 
     # Internal state
     accepted_attribute_counts: Dict[AttributeId, int] = field(default_factory=dict)
+    p_hat: float = 0.0
+    n_obs: int = 0
 
     def _remaining_needed(self) -> Dict[AttributeId, int]:
         rem: Dict[AttributeId, int] = {}
@@ -38,22 +48,40 @@ class QuotaReservePolicy:
             if v:
                 self.accepted_attribute_counts[a] = self.accepted_attribute_counts.get(a, 0) + 1
 
+    def _update_p_hat(self, helpful: bool) -> None:
+        x = 1.0 if helpful else 0.0
+        if self.n_obs == 0:
+            self.p_hat = x
+        else:
+            a = max(1e-6, min(1.0, self.alpha))
+            self.p_hat = a * x + (1.0 - a) * self.p_hat
+        self.n_obs += 1
+
     def decide(self, admitted_count: int, attributes: Mapping[AttributeId, bool]) -> bool:
         R = max(0, self.capacity - admitted_count)
         remaining_needed = self._remaining_needed()
         helpful = any(
             attributes.get(a, False) and remaining_needed.get(a, 0) > 0 for a in self.min_counts
         )
+
+        # Update EWMA with helpfulness of this candidate
+        self._update_p_hat(helpful)
+
         if helpful:
             return True
 
         S = sum(remaining_needed.values())
-        # If we don't have at least one slot of slack beyond worst-case needs,
-        # reject non-helpful candidates to keep feasibility.
         if S >= R:
             return False
-        return True
 
-    # Offline priming from logs (no-op for reserve policy)
+        # Early-game: conservative safety until enough observations
+        if self.n_obs < self.warmup_observations:
+            return S < (R - 1)
+
+        R_prime = max(1, R - 1)
+        req_ratio = S / float(R_prime)
+        return self.p_hat >= req_ratio * (1.0 + self.risk_margin)
+
+    # Offline priming from logs
     def record_observation(self, helpful: bool) -> None:
-        pass
+        self._update_p_hat(helpful)
