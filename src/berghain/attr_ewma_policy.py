@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Mapping
+from typing import Dict, Mapping, Optional
 
 AttributeId = str
 
@@ -41,7 +41,14 @@ class AttributeEwmaPolicy:
     alpha: float = 0.04
     risk_margin: float = 0.20
     warmup_observations: int = 200
-    prior_freqs: Mapping[AttributeId, float] | None = None
+    prior_freqs: Optional[Mapping[AttributeId, float]] = None
+    # Top-K gating: check only the K tightest underfilled attributes (by need)
+    gate_top_k: Optional[int] = None
+    # Correlation-aware expectation: inflate p_hat[a] using average positive correlation
+    # with other underfilled attributes to account for multi-cover arrivals.
+    correlations: Optional[Mapping[AttributeId, Mapping[AttributeId, float]]] = None
+    corr_beta: float = 0.25
+    corr_include_negative: bool = False
 
     accepted_attribute_counts: Dict[AttributeId, int] = field(default_factory=dict)
     p_hat: Dict[AttributeId, float] = field(default_factory=dict)
@@ -103,18 +110,38 @@ class AttributeEwmaPolicy:
         if self.n_obs < self.warmup_observations:
             return S < (R - 1)
 
-        # Expectation-based gating for every underfilled attribute
+        # Expectation-based gating for underfilled attributes (optionally top-K)
         R_prime = max(1, R - 1)
-        # Adaptive margin scales with tightness (S vs R)
+        # Adaptive margin scales with tightness (S vs R')
         margin_eff = self.risk_margin * min(1.0, (S / float(max(1, R_prime))))
-        for a, need in remaining_needed.items():
-            if need <= 0:
-                continue
+
+        underfilled = [(a, need) for a, need in remaining_needed.items() if need > 0]
+        # Preserve full set for correlation context
+        underfilled_all_names = [a for a, _ in underfilled]
+        if self.gate_top_k and self.gate_top_k > 0 and len(underfilled) > self.gate_top_k:
+            underfilled.sort(key=lambda kv: kv[1], reverse=True)
+            underfilled = underfilled[: self.gate_top_k]
+
+        # Precompute average correlation with other underfilled attributes
+        for a, need in underfilled:
             p = self.p_hat.get(a, 0.0)
+            if self.correlations and self.corr_beta != 0.0 and len(underfilled_all_names) > 1:
+                corrs = []
+                row = self.correlations.get(a, {})
+                for b in underfilled_all_names:
+                    if b == a:
+                        continue
+                    r = float(row.get(b, 0.0))
+                    if r >= 0.0 or self.corr_include_negative:
+                        corrs.append(r)
+                if corrs:
+                    avg_corr = sum(corrs) / float(len(corrs))
+                    p = min(1.0, max(0.0, p * (1.0 + self.corr_beta * avg_corr)))
+
             expected_help = p * float(R_prime)
+            target = self.min_counts[a] * (1.0 + margin_eff)
             # Require margin to reduce risk of falling short; equivalent to
             #   p_hat[a] >= (target - c[a]) / R'
-            target = self.min_counts[a] * (1.0 + margin_eff)
             if self.accepted_attribute_counts.get(a, 0) + expected_help < target:
                 return False
         return True

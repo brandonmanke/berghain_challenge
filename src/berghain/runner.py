@@ -98,6 +98,14 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         default=None,
         help="Minimum observations before relaxing window policy",
     )
+    p.add_argument("--gate-top-k", type=int, default=None, help="Gate only top-K underfilled attrs")
+    p.add_argument("--corr-aware", action="store_true", help="Enable correlation-aware expectation")
+    p.add_argument(
+        "--corr-beta", type=float, default=None, help="Scale for correlation inflation (0-1)"
+    )
+    p.add_argument(
+        "--corr-include-neg", action="store_true", help="Include negative correlations in averaging"
+    )
     # Resume options
     p.add_argument(
         "--resume-from-log", default=os.getenv("RESUME_LOG"), help="Resume run from NDJSON log file"
@@ -142,6 +150,10 @@ def run_game(
     warmup: Optional[int] = None,
     window_size: Optional[int] = None,
     min_observations: Optional[int] = None,
+    gate_top_k: Optional[int] = None,
+    corr_aware: bool = False,
+    corr_beta: Optional[float] = None,
+    corr_include_neg: bool = False,
 ) -> Tuple[int, Dict[str, int]]:
     client = ApiClient(base_url, timeout=timeout, retries=retries)
     new_game = client.new_game(scenario, player_id)
@@ -184,6 +196,14 @@ def run_game(
             risk_margin=risk_margin if risk_margin is not None else 0.20,
             warmup_observations=warmup or 200,
             prior_freqs=prior_freqs,
+            gate_top_k=gate_top_k,
+            correlations=(
+                new_game.attributeStatistics.correlations
+                if (hasattr(new_game, "attributeStatistics") and corr_aware)
+                else None
+            ),
+            corr_beta=corr_beta if corr_beta is not None else 0.25,
+            corr_include_negative=bool(corr_include_neg),
         )
     else:
         raise ValueError(f"Unknown policy: {policy_name}")
@@ -344,6 +364,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 warmup=ns.warmup,
                 window_size=ns.window_size,
                 min_observations=ns.min_observations,
+                gate_top_k=ns.gate_top_k,
+                corr_aware=bool(ns.corr_aware),
+                corr_beta=ns.corr_beta,
+                corr_include_neg=bool(ns.corr_include_neg),
             )
         else:
             # Default run log path if none provided
@@ -367,6 +391,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 warmup=ns.warmup,
                 window_size=ns.window_size,
                 min_observations=ns.min_observations,
+                gate_top_k=ns.gate_top_k,
+                corr_aware=bool(ns.corr_aware),
+                corr_beta=ns.corr_beta,
+                corr_include_neg=bool(ns.corr_include_neg),
             )
     except Exception as e:
         print(str(e))
@@ -464,6 +492,10 @@ def resume_game(
     warmup: Optional[int],
     window_size: Optional[int],
     min_observations: Optional[int],
+    gate_top_k: Optional[int] = None,
+    corr_aware: bool = False,
+    corr_beta: Optional[float] = None,
+    corr_include_neg: bool = False,
 ) -> Tuple[int, Dict[str, int]]:
     if not resume_from_log and (not override_game_id or override_start_index is None):
         raise RuntimeError("Provide --resume-from-log or both --game-id and --start-index")
@@ -524,6 +556,10 @@ def resume_game(
             alpha=alpha if alpha is not None else 0.04,
             risk_margin=risk_margin if risk_margin is not None else 0.20,
             warmup_observations=warmup or 200,
+            gate_top_k=gate_top_k,
+            correlations=None,  # not available on resume
+            corr_beta=corr_beta if corr_beta is not None else 0.25,
+            corr_include_negative=bool(corr_include_neg),
         )
     else:
         raise ValueError(f"Unknown policy: {policy_name}")
