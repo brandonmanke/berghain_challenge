@@ -36,6 +36,13 @@
 - `window` — sliding-window relaxed rule (size=500, margin=0.15).
 - `ewma` — exponentially-weighted moving average of helpful rate (alpha=0.03, warmup=100).
   - Accept non-helpful when ewma >= S/(R-1) with safety margin.
+- `attr-ewma` — per-attribute EWMA rates; accepts non-helpful only if, for every underfilled attribute, expected helpful arrivals in remaining slots cover the deficit with margin.
+  - Tunables: `--alpha`, `--risk-margin`, `--warmup` (uses API priors to initialize rates).
+
+### Tuning Tips
+- Start safe: `--risk-margin 0.18`, `--warmup 150` (attr‑ewma/ewma).
+- Reduce rejections once stable: lower margin to 0.12–0.10; warmup 80–120.
+- Use `--alpha 0.05` to adapt quicker when distribution is steady.
 
 ### Resume & Error Recovery
 - Recommended logging: run with `LOG_INTERVAL=1` and `LOG_JSON=logs/run.ndjson` to capture every step.

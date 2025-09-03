@@ -12,15 +12,14 @@ class WindowRelaxedPolicy:
     """
     Sliding-window relaxed variant of QuotaReserve.
 
-    For non-helpful candidates, accept if estimated helpful arrival rate
-    in the recent window is high enough to still meet remaining minimums.
+    - p_hat is computed over a fixed-size window of arrivals.
+    - Non-helpful acceptance allowed when p_hat >= S/(R-1) with margin.
+    - Early window sizes or few observations fall back to conservative reserve.
 
-    Heuristic:
-      - Let R be remaining capacity, S be total remaining minimums.
-      - For a non-helpful candidate, require p_hat >= S / (R-1) * (1 + risk_margin),
-        where p_hat is fraction of recent arrivals that would be helpful
-        (i.e., possess any underfilled attribute at the time they appeared).
-      - Falls back to simple reserve rule early when limited observations.
+    Tuning
+    - window_size: 300–800 reasonable; larger is smoother/laggier.
+    - risk_margin: 0.10–0.20 typical.
+    - min_observations: 80–150 before relaxing.
     """
 
     min_counts: Mapping[AttributeId, int]

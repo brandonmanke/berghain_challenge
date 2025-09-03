@@ -9,17 +9,16 @@ AttributeId = str
 @dataclass
 class EwmaRelaxedPolicy:
     """
-    EWMA-based relaxed reserve policy.
+    EWMA-based relaxed reserve policy (single global p_hat).
 
-    Maintains an exponentially-weighted moving average p_hat of the rate at
-    which arrivals are "helpful" (i.e., satisfy any underfilled attribute).
+    - p_hat tracks fraction of recent arrivals that would be helpful.
+    - Non-helpful acceptance allowed when p_hat >= S/(R-1) with margin.
+    - Warmup uses conservative reserve logic to avoid early risk.
 
-    Accept rule:
-      - Always accept helpful candidates.
-      - Otherwise reject if no slack (S >= R).
-      - Otherwise, once enough observations have accrued, accept non-helpful if
-        p_hat >= S/(R-1) * (1 + risk_margin).
-      - Early on (few obs), fall back to conservative reserve: require S < R-1.
+    Tuning
+    - alpha: 0.03–0.06 (higher adapts faster, can be noisier).
+    - risk_margin: 0.10–0.20 (higher is safer, more rejections).
+    - warmup_observations: 80–150 typical.
     """
 
     min_counts: Mapping[AttributeId, int]
