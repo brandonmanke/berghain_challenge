@@ -48,3 +48,35 @@ def test_attr_ewma_topk_and_corr():
     # Choose admitted_count so R' = 8
     admitted_count = 11  # R = 9, R' = 8
     assert policy.decide(admitted_count=admitted_count, attributes=attrs) is True
+
+
+def test_attr_ewma_rejects_partial_help_when_other_deficits_are_dire():
+    policy = AttributeEwmaPolicy(
+        min_counts={"creative": 300, "techno": 100},
+        capacity=1000,
+        alpha=1e-6,
+        risk_margin=0.0,
+        warmup_observations=0,
+    )
+    policy.accepted_attribute_counts.update({"creative": 50, "techno": 90})
+    policy.p_hat.update({"creative": 0.25, "techno": 0.8})
+
+    attrs = {"creative": False, "techno": True}
+    # Admitted so far -> R = 100 slots remain (including this candidate)
+    assert policy.decide(admitted_count=900, attributes=attrs) is False
+
+
+def test_attr_ewma_accepts_when_candidate_covers_scarce_attribute():
+    policy = AttributeEwmaPolicy(
+        min_counts={"creative": 300, "techno": 100},
+        capacity=1000,
+        alpha=1e-6,
+        risk_margin=0.0,
+        warmup_observations=0,
+    )
+    policy.accepted_attribute_counts.update({"creative": 50, "techno": 90})
+    policy.p_hat.update({"creative": 0.25, "techno": 0.8})
+
+    attrs = {"creative": True, "techno": False}
+    # Plenty of capacity remains so taking a creative guest keeps feasibility
+    assert policy.decide(admitted_count=600, attributes=attrs) is True
