@@ -9,26 +9,7 @@ from typing import Dict, List, Optional, Tuple
 from .client import ApiClient
 from .logging_utils import JsonLinesLogger
 from .policy import QuotaReservePolicy
-
-
-def _load_dotenv(path: str = ".env") -> None:
-    """Minimal .env loader: KEY=VALUE lines, ignore comments/blank.
-    Only sets variables not already in the environment.
-    """
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            for raw in f:
-                line = raw.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                k = k.strip()
-                v = v.strip().strip('"').strip("'")
-                os.environ.setdefault(k, v)
-    except FileNotFoundError:
-        pass
+from .utils import load_dotenv
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
@@ -214,11 +195,23 @@ def run_game(
     jlogger = JsonLinesLogger(log_json) if log_json else None
     # Start log record
     if jlogger:
+        prior_freqs = (
+            new_game.attributeStatistics.relativeFrequencies
+            if hasattr(new_game, "attributeStatistics")
+            else None
+        )
+        correlations = (
+            new_game.attributeStatistics.correlations
+            if hasattr(new_game, "attributeStatistics")
+            else None
+        )
         jlogger.start(
             scenario=scenario,
             game_id=new_game.gameId,
             capacity=capacity,
             constraints=min_counts,
+            prior_freqs=prior_freqs,
+            correlations=correlations,
         )
 
     step = 0
@@ -328,7 +321,7 @@ def run_game(
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    _load_dotenv()
+    load_dotenv()
     ns = parse_args(argv or sys.argv[1:])
 
     if not ns.player_id:
@@ -432,6 +425,8 @@ def _reconstruct_from_log(path: str):
     capacity = int(last_start.get("capacity", 1000))
     game_id = last_start.get("gameId")
     scenario = int(last_start.get("scenario", 1))
+    prior_freqs = last_start.get("prior_freqs", {})
+    correlations = last_start.get("correlations", {})
 
     # Build accepted attribute counts and find last decisions
     accepted_counts: Dict[str, int] = {k: 0 for k in constraints.keys()}
@@ -467,6 +462,8 @@ def _reconstruct_from_log(path: str):
         "next_index": next_index,
         "prev_accept": prev_accept,
         "events": buffer,
+        "prior_freqs": prior_freqs,
+        "correlations": correlations,
     }
 
 
@@ -512,6 +509,8 @@ def resume_game(
         accepted_counts = dict(state["accepted_counts"])
         scenario = int(state["scenario"]) or scenario
         events = list(state.get("events", []))
+        prior_freqs = state.get("prior_freqs", {})
+        correlations_from_log = state.get("correlations", {})
     else:
         # Manual resume; constraints unknown. Use empty constraints or supply via env.
         constraints = {}
@@ -519,6 +518,9 @@ def resume_game(
         start_index = int(override_start_index)
         prev_accept = False
         accepted_counts = {}
+        events = []
+        prior_freqs = {}
+        correlations_from_log = {}
 
     if not game_id:
         raise RuntimeError("Missing gameId to resume. Use --game-id or --resume-from-log")
@@ -549,15 +551,16 @@ def resume_game(
     elif policy_name == "attr-ewma":
         from .attr_ewma_policy import AttributeEwmaPolicy  # type: ignore
 
-        # No priors available on resume; policy will keep EWMA primed via replay
+        # Use priors from log if available (requires logging enhancement)
         policy = AttributeEwmaPolicy(
             min_counts=constraints,
             capacity=capacity,
             alpha=alpha if alpha is not None else 0.04,
             risk_margin=risk_margin if risk_margin is not None else 0.20,
             warmup_observations=warmup or 200,
+            prior_freqs=prior_freqs if prior_freqs else None,
             gate_top_k=gate_top_k,
-            correlations=None,  # not available on resume
+            correlations=correlations_from_log if correlations_from_log else None,
             corr_beta=corr_beta if corr_beta is not None else 0.25,
             corr_include_negative=bool(corr_include_neg),
         )

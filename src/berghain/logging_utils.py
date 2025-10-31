@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 
 def _utc_iso() -> str:
@@ -64,17 +64,27 @@ class JsonLinesLogger:
         self._write({"event": "failed", "scenario": scenario, "reason": reason})
 
     def start(
-        self, *, scenario: int, game_id: str, capacity: int, constraints: Dict[str, int]
+        self,
+        *,
+        scenario: int,
+        game_id: str,
+        capacity: int,
+        constraints: Dict[str, int],
+        prior_freqs: Optional[Dict[str, float]] = None,
+        correlations: Optional[Dict[str, Dict[str, float]]] = None,
     ) -> None:
-        self._write(
-            {
-                "event": "start",
-                "scenario": scenario,
-                "gameId": game_id,
-                "capacity": capacity,
-                "constraints": constraints,
-            }
-        )
+        record = {
+            "event": "start",
+            "scenario": scenario,
+            "gameId": game_id,
+            "capacity": capacity,
+            "constraints": constraints,
+        }
+        if prior_freqs:
+            record["prior_freqs"] = prior_freqs
+        if correlations:
+            record["correlations"] = correlations
+        self._write(record)
 
     def request(
         self,
