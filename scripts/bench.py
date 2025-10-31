@@ -5,19 +5,6 @@ import sys
 from typing import List
 
 
-def _load_dotenv(path: str = ".env") -> None:
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            for raw in f:
-                line = raw.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
-    except FileNotFoundError:
-        pass
-
-
 def parse_args(argv: List[str]):
     p = argparse.ArgumentParser(description="Bench multiple scenarios")
     p.add_argument("--scenarios", default="1,2,3", help="Comma-separated scenario list")
@@ -31,20 +18,44 @@ def parse_args(argv: List[str]):
         choices=["reserve", "window", "ewma", "attr-ewma"],
         default=os.getenv("POLICY", "reserve"),
     )
+    # Policy tuning parameters
+    p.add_argument("--alpha", type=float, default=None, help="Smoothing factor for EWMA policies")
+    p.add_argument(
+        "--risk-margin", type=float, default=None, help="Safety margin for relaxed policies"
+    )
+    p.add_argument(
+        "--warmup", type=int, default=None, help="Warmup observations before relaxing gates"
+    )
+    p.add_argument("--window-size", type=int, default=None, help="Window size for window policy")
+    p.add_argument(
+        "--min-observations",
+        type=int,
+        default=None,
+        help="Minimum observations before relaxing window policy",
+    )
+    p.add_argument("--gate-top-k", type=int, default=None, help="Gate only top-K underfilled attrs")
+    p.add_argument("--corr-aware", action="store_true", help="Enable correlation-aware expectation")
+    p.add_argument(
+        "--corr-beta", type=float, default=None, help="Scale for correlation inflation (0-1)"
+    )
+    p.add_argument(
+        "--corr-include-neg", action="store_true", help="Include negative correlations in averaging"
+    )
     return p.parse_args(argv)
 
 
 def main(argv: List[str] | None = None) -> int:
-    _load_dotenv()
-    argv = argv or sys.argv[1:]
-    ns = parse_args(argv)
-
     here = os.path.dirname(os.path.abspath(__file__))
     src = os.path.abspath(os.path.join(here, "..", "src"))
     if src not in sys.path:
         sys.path.insert(0, src)
 
     from berghain.runner import run_game
+    from berghain.utils import load_dotenv
+
+    load_dotenv()
+    argv = argv or sys.argv[1:]
+    ns = parse_args(argv)
 
     base_url = os.getenv("BASE_URL", "https://berghain.challenges.listenlabs.ai/")
     player_id = os.getenv("PLAYER_ID")
@@ -53,7 +64,7 @@ def main(argv: List[str] | None = None) -> int:
         return 2
 
     scenarios = [int(s.strip()) for s in ns.scenarios.split(",") if s.strip()]
-    print(f"Bench start: scenarios={scenarios} capacity={ns.capacity}")
+    print(f"Bench start: scenarios={scenarios} capacity={ns.capacity} policy={ns.policy}")
     results = {}
     for s in scenarios:
         try:
@@ -68,6 +79,15 @@ def main(argv: List[str] | None = None) -> int:
                 progress_interval=200,
                 progress_attrs=3,
                 policy_name=ns.policy,
+                alpha=ns.alpha,
+                risk_margin=ns.risk_margin,
+                warmup=ns.warmup,
+                window_size=ns.window_size,
+                min_observations=ns.min_observations,
+                gate_top_k=ns.gate_top_k,
+                corr_aware=ns.corr_aware,
+                corr_beta=ns.corr_beta,
+                corr_include_neg=ns.corr_include_neg,
             )
             results[s] = {"rejected": rejected, "remaining": remaining}
             print(f"Scenario {s}: rejected={rejected} remaining={remaining}")

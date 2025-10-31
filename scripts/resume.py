@@ -4,19 +4,6 @@ import os
 import sys
 
 
-def _load_dotenv(path: str = ".env") -> None:
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            for raw in f:
-                line = raw.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
-    except FileNotFoundError:
-        pass
-
-
 def parse_args(argv):
     p = argparse.ArgumentParser(description="Resume a game from NDJSON logs or index")
     p.add_argument(
@@ -46,13 +33,15 @@ def parse_args(argv):
 
 
 def main(argv=None) -> int:
-    _load_dotenv()
     here = os.path.dirname(os.path.abspath(__file__))
     src = os.path.abspath(os.path.join(here, "..", "src"))
     if src not in sys.path:
         sys.path.insert(0, src)
 
     from berghain.runner import resume_game
+    from berghain.utils import load_dotenv
+
+    load_dotenv()
 
     ns = parse_args(argv or sys.argv[1:])
 
