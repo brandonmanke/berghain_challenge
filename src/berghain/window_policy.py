@@ -39,6 +39,15 @@ class WindowRelaxedPolicy:
     accepted_attribute_counts: Dict[AttributeId, int] = field(default_factory=dict)
     window_helpful: Deque[bool] = field(default_factory=deque)
 
+    def __post_init__(self) -> None:
+        """Validate parameters."""
+        from .utils import validate_param
+
+        validate_param("capacity", self.capacity, min_val=1, min_exclusive=False)
+        validate_param("window_size", self.window_size, min_val=1, min_exclusive=False)
+        validate_param("risk_margin", self.risk_margin, min_val=0.0, min_exclusive=False)
+        validate_param("min_observations", self.min_observations, min_val=0, min_exclusive=False)
+
     def _remaining_needed(self) -> Dict[AttributeId, int]:
         rem: Dict[AttributeId, int] = {}
         for a, m in self.min_counts.items():

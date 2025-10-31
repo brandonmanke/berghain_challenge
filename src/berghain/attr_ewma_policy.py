@@ -53,6 +53,19 @@ class AttributeEwmaPolicy:
     p_hat: Dict[AttributeId, float] = field(default_factory=dict)
     n_obs: int = 0
 
+    def __post_init__(self) -> None:
+        """Validate parameters."""
+        from .utils import validate_param
+
+        validate_param("capacity", self.capacity, min_val=1, min_exclusive=False)
+        validate_param("alpha", self.alpha, min_val=0.0, max_val=1.0, min_exclusive=True)
+        validate_param("risk_margin", self.risk_margin, min_val=0.0, min_exclusive=False)
+        validate_param(
+            "warmup_observations", self.warmup_observations, min_val=0, min_exclusive=False
+        )
+        validate_param("gate_top_k", self.gate_top_k, min_val=1, min_exclusive=False)
+        validate_param("corr_beta", self.corr_beta, min_val=0.0, max_val=1.0, min_exclusive=False)
+
     def _remaining_needed(self) -> Dict[AttributeId, int]:
         rem: Dict[AttributeId, int] = {}
         for a, m in self.min_counts.items():
