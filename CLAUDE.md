@@ -182,15 +182,45 @@ This is intentional - the current observation must be included in the streaming 
 
 ## Known Issues & Improvement Opportunities
 
-1. **Test Coverage**: Currently ~6 test functions for ~1,500 LOC. AGENTS.md targets ≥90% for policy logic. Critical gaps:
-   - No tests for `_reconstruct_from_log()` resume logic
-   - No integration tests with mocked API responses
-   - Error handling paths (retry, resync) untested
+1. **Error Parsing**: Resume logic (runner.py:272-274, runner.py:614-615) uses regex to parse "Expected person X, got Y" errors - fragile if API message format changes. Should use structured error codes if available.
 
-2. **Code Duplication**: `_load_dotenv()` duplicated in runner.py, bench.py, resume.py - should extract to shared utility
+2. **Logging I/O**: JsonLinesLogger opens/closes file for every write (no buffering). With LOG_INTERVAL=1, this could impact performance. Trade-off: durability vs performance.
 
-3. **Bench Script**: Missing policy tuning parameters (--alpha, --risk-margin, etc.), limiting systematic evaluation
+3. **Hardcoded Policy Defaults**: Default parameters (alpha, risk_margin, warmup) appear in both runner.py and policy class definitions. If defaults change, must update multiple locations.
 
-4. **Parameter Validation**: No validation of policy parameters (e.g., alpha ∈ (0,1], risk_margin ≥ 0)
+## TODO: Priority Improvements
 
-5. **Error Parsing**: Resume logic uses regex to parse "Expected person X, got Y" errors - fragile if API message format changes
+### High Priority - Integration Tests
+
+**Status**: Critical gap - currently ~6 test functions for ~1,500 LOC
+
+**What's needed**:
+- Integration tests for `runner.py:run_game()` with mocked API client
+  - Test full game loop from start to completion
+  - Test constraint satisfaction for various scenarios
+  - Test policy state updates during game execution
+
+- Tests for `runner.py:_reconstruct_from_log()` resume logic
+  - Test parsing of NDJSON logs with all event types
+  - Test state reconstruction (constraints, accepted_counts, EWMA state)
+  - Test extraction of priors and correlations from logs
+  - Test handling of malformed/incomplete logs
+
+- Tests for error handling paths
+  - API retry logic with transient failures
+  - Resync logic when "Expected person X, got Y" errors occur
+  - Network timeout handling
+  - Invalid API responses
+
+- Property-based tests
+  - Constraints never violated (property: sum(remaining_needed) >= 0 at completion)
+  - Capacity never exceeded (property: admitted_count <= capacity always)
+  - EWMA estimates remain in [0, 1] (property: 0 <= p_hat <= 1)
+
+**Approach**:
+- Use `unittest.mock` to mock `ApiClient` responses
+- Create fixture NDJSON logs for resume testing
+- Use pytest parametrize for testing multiple scenarios/policies
+- Add coverage reporting: `pytest --cov=src --cov-report=term-missing`
+
+**Target**: ≥90% coverage for policy logic, ≥80% overall (per AGENTS.md)
